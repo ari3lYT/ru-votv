@@ -63,30 +63,23 @@
 
 ---
 
-## 🧰 Как собрать перевод самому
+## 🤝 Вклад
 
-В репозитории лежат исходные таблицы (`translations/Game/Game_strings.csv`) и скрипты (`translations/build_game_locres.py`, `tools/pack.py`, `tools/u4pak/`). Так можно поправить текст и собрать свой `.pak`.
+Хочешь помочь? Делай правки, улучшай текст, открывай форк — вклад приветствуется.
 
-1. Поставь Python 3.10+ и зависимость `pip install pylocres`.
-2. Отредактируй `translations/Game/Game_strings.csv` (колонки `id / english / russian`).
-3. Собери новое `Game.locres`:
+Мини-инструкция для контрибьюторов (актуально для версий до a09b_0004):
+1. Отредактируй `translations/Game/Game_strings.csv` (колонки `id / english / russian`).
+2. Собери обновлённый `Game.locres` командой:
    ```bash
    python translations/build_game_locres.py
    ```
-   Готовый файл появится в `translations/output/Game_ru.locres`.
-4. Подготовь структуру для упаковки и запусти сборку `.pak`:
+   Результат появится в `translations/output/Game_ru.locres`.
+3. Подготовь структуру `Localization/Game/ru/Game.locres` и упакуй `.pak`:
    ```bash
    mkdir -p translations/output/Game_ru/Localization/Game/ru
    cp translations/output/Game_ru.locres translations/output/Game_ru/Localization/Game/ru/Game.locres
    python tools/pack.py translations/output/Game_ru translations/output/ZZ_GameRuPatch_P.pak --mount-point ../../../VotV/Content/
    ```
-5. Скопируй `translations/output/ZZ_GameRuPatch_P.pak` в `VotV/Content/Paks/` (только версии до `a09b_0004`) и протестируй.
-6. Открой Pull Request с обновлённым `Game_strings.csv` и собранным `.pak`, если хочешь поделиться переводом.
+4. Протестируй файл, положив его в `VotV/Content/Paks/`, и присылай Pull Request с обновлённым CSV и `.pak`.
 
-По аналогии можно собрать `Engine.locres` и упаковать его в `ZZ_EngineRuPatch_P.pak`, чтобы обновить UI движка.
-
----
-
-## 🤝 Вклад
-
-Хочешь помочь? Делай правки, улучшай текст, открывай форк — вклад приветствуется.
+Аналогично можно обновить `Engine.locres` и собрать `ZZ_EngineRuPatch_P.pak`.
