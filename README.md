@@ -61,6 +61,65 @@
 
 Хочешь помочь? Делай правки, улучшай текст, открывай форк — вклад приветствуется.
 
+### Что нужно установить для сборки
+
+Минимальный набор для пересборки `Game.locres` и упаковки `.pak` в этом репозитории такой:
+
+1. `Python 3.10+`
+2. `pip`
+3. пакет `pylocres`
+
+Команда установки:
+
+```bash
+python -m pip install pylocres
+```
+
+Этого достаточно, потому что:
+
+* `translations/build_game_locres.py` собирает `Game.locres` через `pylocres`
+* `tools/pack.py` использует уже вложенный в репозиторий `tools/u4pak/u4pak.py`, отдельный упаковщик скачивать не нужно
+
+Если хочешь ещё и вытаскивать исходные `.locres` из игры сам, а не только пересобирать уже готовый CSV, тогда дополнительно пригодится любой распаковщик `.pak`, например `repak`, `u4pak` или `FModel`. Но для самой сборки перевода из этого репо они не обязательны.
+
+### Быстрый цикл сборки
+
+Если у тебя уже есть этот репозиторий и ты просто хочешь изменить строки и собрать новый патч:
+
+1. Отредактируй `translations/Game/Game_strings.csv`.
+2. Положи рядом базовый английский `Game.locres` из игры.
+3. Собери новый `locres`.
+4. Упакуй его в `.pak`.
+
+Пример команд:
+
+```bash
+python translations/build_game_locres.py \
+  --strings translations/Game/Game_strings.csv \
+  --locres VotV/Content/Localization/Game/en/Game.locres \
+  --output translations/output/Game_ru.locres
+
+mkdir -p translations/output/Game_ru/Localization/Game/ru
+cp translations/output/Game_ru.locres translations/output/Game_ru/Localization/Game/ru/Game.locres
+
+python tools/pack.py \
+  translations/output/Game_ru \
+  translations/output/ZZ_GameRuPatch_P.pak \
+  --mount-point ../../../VotV/Content/
+```
+
+На выходе получишь:
+
+* `translations/output/Game_ru.locres`
+* `translations/output/ZZ_GameRuPatch_P.pak`
+
+Если упаковка не срабатывает, сначала проверь:
+
+* что `python` действительно запускает Python 3
+* что `pylocres` установлен в тот же интерпретатор
+* что структура перед упаковкой именно такая: `Localization/Game/ru/Game.locres`
+* что имя итогового файла остаётся с суффиксом `_P.pak`, иначе игра может не перекрыть оригинальные ресурсы
+
 Мини-инструкция для контрибьюторов:
 1. Отредактируй `translations/Game/Game_strings.csv` (колонки `id / english / russian`).
 2. Собери обновлённый `Game.locres` командой:
