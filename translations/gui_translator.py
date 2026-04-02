@@ -264,29 +264,49 @@ class TranslatorApp:
         heading_size = max(13, base_size + 1)
         title_size = max(14, base_size + 2)
 
+        ui_family = self.pick_font_family(
+            [
+                "Noto Sans",
+                "DejaVu Sans",
+                "Segoe UI",
+                "Cantarell",
+                "Liberation Sans",
+                "Arial",
+                "Helvetica",
+            ]
+        )
+        mono_family = self.pick_font_family(
+            [
+                "Cascadia Mono",
+                "Consolas",
+                "Noto Sans Mono",
+                "DejaVu Sans Mono",
+                "Liberation Mono",
+                "Courier New",
+                "Courier",
+            ]
+        )
+
         default_font = tkfont.nametofont("TkDefaultFont")
         text_font = tkfont.nametofont("TkTextFont")
         fixed_font = tkfont.nametofont("TkFixedFont")
         heading_font = tkfont.nametofont("TkHeadingFont")
         menu_font = tkfont.nametofont("TkMenuFont")
 
-        for font_obj, size in (
-            (default_font, base_size),
-            (text_font, base_size),
-            (fixed_font, mono_size),
-            (heading_font, heading_size),
-            (menu_font, base_size),
-        ):
-            font_obj.configure(size=size)
+        default_font.configure(family=ui_family, size=base_size)
+        text_font.configure(family=ui_family, size=base_size)
+        fixed_font.configure(family=mono_family, size=mono_size)
+        heading_font.configure(family=ui_family, size=heading_size, weight="bold")
+        menu_font.configure(family=ui_family, size=base_size)
 
         self.ui_fonts = {
             "default": default_font,
             "text": text_font,
             "fixed": fixed_font,
             "heading": heading_font,
-            "title": tkfont.Font(family=default_font.cget("family"), size=title_size, weight="bold"),
-            "bold": tkfont.Font(family=default_font.cget("family"), size=base_size, weight="bold"),
-            "small": tkfont.Font(family=default_font.cget("family"), size=small_size),
+            "title": tkfont.Font(family=ui_family, size=title_size, weight="bold"),
+            "bold": tkfont.Font(family=ui_family, size=base_size, weight="bold"),
+            "small": tkfont.Font(family=ui_family, size=small_size),
         }
 
         rowheight = max(26, int(round(24 * self.ui_scale)))
@@ -298,6 +318,13 @@ class TranslatorApp:
         style.configure("TEntry", padding=(padding // 2, padding // 3))
         style.configure("TCombobox", padding=(padding // 2, padding // 3))
         style.configure("TLabelframe.Label", font=self.ui_fonts["bold"])
+
+    def pick_font_family(self, candidates: list[str]) -> str:
+        available = {name.lower(): name for name in tkfont.families(self.root)}
+        for candidate in candidates:
+            if candidate.lower() in available:
+                return available[candidate.lower()]
+        return tkfont.nametofont("TkDefaultFont").cget("family")
 
     def configure_window(self) -> None:
         screen_w = max(1280, self.root.winfo_screenwidth())
