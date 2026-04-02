@@ -372,6 +372,20 @@ class TranslatorApp:
                 return family
         return None
 
+    def font_resolves_to_ui_family(self, family: str) -> bool:
+        blocked_words = ("dingbat", "symbol", "cursor", "glyph", "nil")
+        family_lc = family.lower()
+        if any(word in family_lc for word in blocked_words):
+            return False
+        try:
+            probe = tkfont.Font(root=self.root, family=family, size=12)
+        except Exception:
+            return False
+        actual = str(probe.actual("family") or "").lower()
+        if not actual or actual == "fixed":
+            return False
+        return not any(word in actual for word in blocked_words)
+
     def pick_ui_font_family(self) -> str:
         platform_candidates = {
             "win32": [
@@ -388,26 +402,46 @@ class TranslatorApp:
                 "Arial",
                 "Noto Sans",
             ],
+            "linux": [
+                "texgyreheros",
+                "Helvetica",
+                "nimbus sans l",
+                "texgyreadventor",
+                "latin modern sans",
+                "Noto Sans",
+                "DejaVu Sans",
+                "Liberation Sans",
+                "Cantarell",
+            ],
         }
         generic_candidates = [
-            "clearlyu",
-            "clean",
+            "Helvetica",
+            "nimbus sans l",
+            "texgyreheros",
+            "texgyreadventor",
+            "latin modern sans",
             "Noto Sans",
             "DejaVu Sans",
             "Liberation Sans",
             "Cantarell",
             "Segoe UI",
             "Arial",
-            "Helvetica",
-            "nimbus sans l",
+            "clearlyu",
+            "clean",
         ]
         fallback_candidates = sorted(set(tkfont.families(self.root)))
         candidates = []
         if self.font_family_override:
             candidates.append(self.font_family_override)
-        candidates.extend(platform_candidates.get(sys.platform, []))
+        if sys.platform.startswith("linux"):
+            candidates.extend(platform_candidates["linux"])
+        else:
+            candidates.extend(platform_candidates.get(sys.platform, []))
         candidates.extend(generic_candidates)
         candidates.extend(fallback_candidates)
+        chosen = self.pick_first_working_family(candidates, require_cyrillic=False)
+        if chosen and self.font_resolves_to_ui_family(chosen):
+            return chosen
         chosen = self.pick_first_working_family(candidates, require_cyrillic=True)
         if chosen:
             return chosen
