@@ -113,6 +113,36 @@ python tools/pack.py \
 * `translations/output/Game_ru.locres`
 * `translations/output/ZZ_GameRuPatch_P.pak`
 
+### Хелпер для дублей
+
+В `Game_strings.csv` одинаковый `english` может встречаться много раз с разными `id`. Для этого есть отдельный скрипт:
+
+```bash
+python translations/duplicate_helper.py scan --only-conflicts --limit 20
+```
+
+Он покажет группы, где один и тот же `english` имеет несколько вариантов `russian`.
+
+Синхронизировать конкретную группу:
+
+```bash
+python translations/duplicate_helper.py sync \
+  --english "Bone" \
+  --strategy translated-most-common \
+  --write
+```
+
+Что делает стратегия `translated-most-common`:
+
+* если среди дублей уже есть русские варианты, берёт самый частый русский вариант
+* если русских вариантов нет, берёт самый частый непустой вариант
+
+Синхронизировать сразу все конфликтующие дубли:
+
+```bash
+python translations/duplicate_helper.py sync --all-conflicts --strategy translated-most-common --write
+```
+
 Если упаковка не срабатывает, сначала проверь:
 
 * что `python` действительно запускает Python 3
