@@ -1,0 +1,6 @@
+.cache/
+__pycache__/
+*.pyc
+translations/output/
+translations/fork-xximus-meta.json
+translations/fork-xximus-translation-diff.csv

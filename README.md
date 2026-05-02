@@ -1,6 +1,6 @@
 # 🇷🇺 Перевод *Voices of the Void*
 
-> Актуальное состояние репозитория: обновлённый `Game.locres` и патч-паки для ветки `0.9.0` (`Build a09i` / локальная сборка `a09j_0001`).
+> Актуальное состояние репозитория: обновлённый `Game.locres` и патч-паки для ветки `0.9.0` (проверочная локальная сборка `a09k`).
 
 ---
 
@@ -34,7 +34,9 @@
 ## 🛠 Как делался перевод
 
 * Исходные тексты извлечены из оригинальных UE4-локализаций (`.locres`).
-* Перевод генерировался автоматически, без полной ручной корректуры — возможны неточности.
+* Текущий `Game_strings.csv` синхронизирован с актуальным `Game.locres`: `19263` строки.
+* Обычные игровые строки переведены; `460` строк оставлены как есть, потому что это технические токены, числа, URL, id, форматы и плейсхолдеры.
+* Перевод частично генерировался автоматически, без полной ручной корректуры — возможны неточности.
 * Всё собрано обратно в `.locres` и упаковано в `.pak` с корректным mount-point, чтобы перекрывать оригинальные файлы при запуске.
 * Часть строк в меню настроек была вшита прямо в `ui_settings`-ассет, поэтому для них собран отдельный UI override-пак.
 
@@ -51,6 +53,7 @@
 
 * ✔️ **Alpha 0.9.0 / Build a09i**
 * ✔️ **локальная сборка `a09j_0001`** под Proton
+* ✔️ **локальная сборка `a09k`** под Proton
 
 Если у тебя другой билд `0.9.0`, ориентируйся не по имени папки, а по факту:
 если игра подхватывает `_P.pak` из `VotV/Content/Paks`, этот патч должен монтироваться.
@@ -75,10 +78,14 @@
 python -m pip install pylocres
 ```
 
-Этого достаточно, потому что:
+Этого достаточно для сборки `Game_ru.locres`, потому что:
 
 * `translations/build_game_locres.py` собирает `Game.locres` через `pylocres`
-* `tools/pack.py` использует уже вложенный в репозиторий `tools/u4pak/u4pak.py`, отдельный упаковщик скачивать не нужно
+* `tools/pack.py` использует уже вложенный в репозиторий `tools/u4pak/u4pak.py`, отдельный упаковщик скачивать не нужно для локальной тестовой упаковки
+
+Релизный `ZZ_GameRuPatch_P.pak` в корне репозитория упакован через `repak` в формате `V11`
+с тем же типом индекса, что и основной pak текущей сборки игры. Если хочешь пересобрать именно
+релизный `.pak`, установи `repak` отдельно.
 
 Если хочешь ещё и вытаскивать исходные `.locres` из игры сам, а не только пересобирать уже готовый CSV, тогда дополнительно пригодится любой распаковщик `.pak`, например `repak`, `u4pak` или `FModel`. Но для самой сборки перевода из этого репо они не обязательны.
 
@@ -99,13 +106,15 @@ python translations/build_game_locres.py \
   --locres VotV/Content/Localization/Game/en/Game.locres \
   --output translations/output/Game_ru.locres
 
-mkdir -p translations/output/Game_ru/Localization/Game/ru
-cp translations/output/Game_ru.locres translations/output/Game_ru/Localization/Game/ru/Game.locres
+mkdir -p translations/output/Game_ru_repak/VotV/Content/Localization/Game/ru
+cp translations/output/Game_ru.locres translations/output/Game_ru_repak/VotV/Content/Localization/Game/ru/Game.locres
 
-python tools/pack.py \
-  translations/output/Game_ru \
-  translations/output/ZZ_GameRuPatch_P.pak \
-  --mount-point ../../../VotV/Content/
+repak pack \
+  --version V11 \
+  --path-hash-seed 1476701736 \
+  --mount-point ../../../ \
+  translations/output/Game_ru_repak \
+  translations/output/ZZ_GameRuPatch_P.pak
 ```
 
 На выходе получишь:
@@ -143,6 +152,21 @@ python translations/duplicate_helper.py sync \
 python translations/duplicate_helper.py sync --all-conflicts --strategy translated-most-common --write
 ```
 
+### Сравнение с форком xXimuS
+
+Для безопасного переноса полезных правок из форка можно запустить:
+
+```bash
+python translations/import_fork_translations.py --write
+```
+
+Скрипт клонирует/обновляет `xXimuS/ru-votv`, переносит переводы сначала по точному `id`,
+потом по совпадающему английскому тексту, проверяет сохранность `{...}` и markup-токенов,
+а подробный отчёт пишет в `translations/fork-xximus-translation-diff.csv`.
+
+В текущем обновлении из форка было безопасно перенесено `4715` правок перевода:
+`1276` по точному `id` и `3439` по совпадающему английскому тексту.
+
 ### GUI без повторов
 
 Если не хочешь редактировать CSV руками, есть кроссплатформенный GUI на стандартном `Tkinter`:
@@ -157,6 +181,11 @@ python translations/gui_translator.py
 * редактирует один `russian` сразу для всей группы дублей
 * ищет по строкам и фильтрует `translated / untranslated / conflict`
 * показывает все `id`, которые входят в группу
+* показывает переносы строк как `↵`
+* сохраняет начальные/конечные пробелы и переносы без `strip`-нормализации
+* показывает номера строк в редакторе и номер строки в списке
+* корректно заменяет выделение при `Ctrl+V`
+* умеет автосохранять CSV
 * умеет сохранять CSV
 * умеет прямо из окна собрать `Game_ru.locres` и упаковать `ZZ_GameRuPatch_P.pak`
 
@@ -196,12 +225,12 @@ python translations/gui_translator.py \
    Результат появится в `translations/output/Game_ru.locres`.
 3. Подготовь структуру `Localization/Game/ru/Game.locres` и упакуй `.pak`:
    ```bash
-   mkdir -p translations/output/Game_ru/Localization/Game/ru
-   cp translations/output/Game_ru.locres translations/output/Game_ru/Localization/Game/ru/Game.locres
-   python tools/pack.py translations/output/Game_ru translations/output/ZZ_GameRuPatch_P.pak --mount-point ../../../VotV/Content/
+   mkdir -p translations/output/Game_ru_repak/VotV/Content/Localization/Game/ru
+   cp translations/output/Game_ru.locres translations/output/Game_ru_repak/VotV/Content/Localization/Game/ru/Game.locres
+   repak pack --version V11 --path-hash-seed 1476701736 --mount-point ../../../ translations/output/Game_ru_repak translations/output/ZZ_GameRuPatch_P.pak
    ```
 4. Протестируй файл, положив его в `VotV/Content/Paks/`, и присылай Pull Request с обновлённым CSV и `.pak`.
 
-Текущий `translations/Game/Game_strings.csv` уже синхронизирован с актуальным `Game.locres` и содержит `16832` строк.
+Текущий `translations/Game/Game_strings.csv` уже синхронизирован с актуальным `Game.locres` и содержит `19263` строки.
 
 Аналогично можно обновить `Engine.locres` и собрать `ZZ_EngineRuPatch_P.pak`.

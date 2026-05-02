@@ -26,8 +26,8 @@ def load_strings(strings_path: Path) -> dict[str, str]:
             raise SystemExit(f"{strings_path} пропущены колонки: {', '.join(sorted(missing))}")
         for row in reader:
             tid = (row.get("id") or "").strip()
-            ru = (row.get("russian") or "").strip()
-            if tid and ru:
+            ru = row.get("russian") or ""
+            if tid and ru.strip():
                 mapping[tid] = ru
     return mapping
 

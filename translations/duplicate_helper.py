@@ -106,13 +106,18 @@ def build_groups(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
     return groups
 
 
+def nonempty_russian(row: dict[str, str]) -> str | None:
+    value = row.get("russian") or ""
+    return value if value.strip() else None
+
+
 def normalized_variants(rows: Iterable[dict[str, str]]) -> list[str]:
-    return sorted({(row["russian"] or "").strip() for row in rows if (row["russian"] or "").strip()})
+    return sorted({value for row in rows if (value := nonempty_russian(row)) is not None})
 
 
 def choose_translation(rows: list[dict[str, str]], strategy: str) -> str | None:
     english = rows[0]["english"]
-    russian_values = [(row["russian"] or "").strip() for row in rows if (row["russian"] or "").strip()]
+    russian_values = [value for row in rows if (value := nonempty_russian(row)) is not None]
     if not russian_values:
         return None
 
@@ -146,7 +151,7 @@ def print_scan(groups: dict[str, list[dict[str, str]]], args: argparse.Namespace
 
         print(f"COUNT {len(rows)} | DISTINCT_RU {len(variants)}")
         print(f"EN {english!r}")
-        counter = Counter((row['russian'] or '').strip() for row in rows if (row['russian'] or '').strip())
+        counter = Counter(value for row in rows if (value := nonempty_russian(row)) is not None)
         for value, count in counter.most_common(5):
             print(f"  {count:>4} {value!r}")
         print()
@@ -183,8 +188,8 @@ def sync_group(
     if not group:
         return None
 
-    replacement = explicit_russian.strip() if explicit_russian else choose_translation(group, strategy)
-    if not replacement:
+    replacement = explicit_russian if explicit_russian is not None else choose_translation(group, strategy)
+    if replacement is None or not replacement.strip():
         return None
 
     changed = 0

@@ -16,10 +16,18 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
+import datetime
+import ctypes
+import os
 
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 
+
+def load_font_windows(font_path):
+    if sys.platform == "win32" and os.path.exists(font_path):
+        FR_PRIVATE = 0x10
+        ctypes.windll.gdi32.AddFontResourceExW(str(font_path), FR_PRIVATE, 0)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="GUI для перевода Game_strings.csv без повторов.")
@@ -64,7 +72,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def normalized(text: str | None) -> str:
-    return (text or "").strip()
+    return text if text is not None else ""
 
 
 @dataclass
@@ -161,13 +169,21 @@ class TranslationProject:
         self.groups = [groups[key] for key in order]
         self.groups_by_english = groups
 
+        for group in self.groups:
+            group.revert_from_rows()
+
     def save(self, output_path: Path | None = None) -> None:
         target = output_path or self.csv_path
         with target.open("w", encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=["id", "english", "russian"])
             writer.writeheader()
             for row in self.rows:
-                writer.writerow({"id": row.id, "english": row.english, "russian": row.russian})
+                clean_russian = row.russian.replace("↵", "")
+                writer.writerow({
+                    "id": row.id,
+                    "english": row.english,
+                    "russian": clean_russian
+                })
 
     def counts(self) -> tuple[int, int, int]:
         translated = sum(1 for group in self.groups if group.status() == "translated")
@@ -197,6 +213,27 @@ class TranslationProject:
                 changed_groups += 1
         return changed_groups
 
+class LineNumbers(tk.Canvas):
+    def __init__(self, master, text_widget, **kwargs):
+        super().__init__(master, **kwargs)
+        self.text_widget = text_widget
+        self.width = kwargs.get("width", 5)
+
+    def redraw(self):
+        self.delete("all")
+        if not self.text_widget: return
+
+        self.text_widget.update_idletasks()
+
+        i = self.text_widget.index("@0,0")
+        while True:
+            dline = self.text_widget.dlineinfo(i)
+            if dline is None: break
+            y = dline[1]
+            linenum = str(i).split(".")[0]
+            self.create_text(self.width - 5, y, anchor="ne", text=linenum,
+                             fill="#444444", font=self.text_widget.cget("font"))
+            i = self.text_widget.index(f"{i} lineend + 1c")
 
 class TranslatorApp:
     FILTER_LABELS = {
@@ -240,10 +277,29 @@ class TranslatorApp:
         self.filter_var = tk.StringVar(value="all")
         self.status_var = tk.StringVar()
         self.group_summary_var = tk.StringVar()
+        self.autosave_enabled = tk.BooleanVar(value=True)
+        self.autosave_interval = 5 * 60 * 1000  # 5 минут в миллисекундах
+
+        font_file = Path(__file__).parent / "JetBrainsMono-Regular.ttf"
+        load_font_windows(str(font_file))
+        self.special_font = "JetBrains Mono" if font_file.exists() else self.pick_mono_font_family()
 
         self._build_ui()
         self.refresh_tree()
         self.update_status_bar()
+        self.russian_text.configure(autoseparators=True, undo=True)
+        self.root.after(self.autosave_interval, self.run_autosave)
+
+    def run_autosave(self):
+        if hasattr(self, 'autosave_enabled') and self.autosave_enabled.get():
+            try:
+                self.save_csv()
+                now = datetime.datetime.now().strftime("%H:%M:%S")
+                self.set_status(f"Автосохранение выполнено в {now}")
+            except Exception as e:
+                self.set_status(f"Ошибка автосохранения: {e}")
+
+        self.root.after(self.autosave_interval, self.run_autosave)
 
     def enable_hidpi_awareness(self) -> None:
         if sys.platform != "win32":
@@ -496,6 +552,13 @@ class TranslatorApp:
         ttk.Button(toolbar, text="Сохранить как", command=self.save_csv_as).grid(row=0, column=4, padx=4)
         ttk.Button(toolbar, text="Синхр. конфликты", command=self.sync_all_conflicts).grid(row=0, column=5, padx=4)
 
+        self.autosave_cb = ttk.Checkbutton(
+            toolbar,
+            text="Автосохранение",
+            variable=self.autosave_enabled
+        )
+        self.autosave_cb.grid(row=0, column=6, padx=4, pady=(8, 0))
+
         ttk.Label(toolbar, text="Поиск").grid(row=1, column=0, sticky="w", pady=(8, 0))
         search_entry = ttk.Entry(toolbar, textvariable=self.search_var)
         search_entry.grid(row=1, column=1, sticky="ew", padx=4, pady=(8, 0))
@@ -533,8 +596,10 @@ class TranslatorApp:
         right.rowconfigure(7, weight=1)
         main.add(right, weight=6)
 
-        columns = ("status", "count", "english", "russian")
+        columns = ("id_preview", "status", "count", "english", "russian")
         self.tree = ttk.Treeview(left, columns=columns, show="headings", selectmode="browse")
+        self.tree.heading("id_preview", text="№")
+        self.tree.column("id_preview", width=50, stretch=False)
         self.tree.heading("status", text="Статус")
         self.tree.heading("count", text="Повт.")
         self.tree.heading("english", text="English")
@@ -554,29 +619,65 @@ class TranslatorApp:
             row=0, column=0, sticky="w"
         )
 
+        # --- ENGLISH SECTION ---
         ttk.Label(right, text="English").grid(row=1, column=0, sticky="w", pady=(10, 2))
+
+        en_container = ttk.Frame(right)
+        en_container.grid(row=2, column=0, sticky="nsew")
+        en_container.columnconfigure(1, weight=1)
+
+        self.en_lines = LineNumbers(en_container, None, width=35, highlightthickness=0, bg="#f0f0f0")
+        self.en_lines.grid(row=0, column=0, sticky="ns")
+
         self.english_text = tk.Text(
-            right,
+            en_container,
             height=text_height,
             wrap="word",
             font=self.ui_fonts["text"],
             padx=10,
             pady=10,
         )
-        self.english_text.grid(row=2, column=0, sticky="nsew")
+        self.english_text.grid(row=0, column=1, sticky="nsew")
+        self.en_lines.text_widget = self.english_text
         self.english_text.configure(state="disabled")
 
+        # --- RUSSIAN SECTION ---
         ttk.Label(right, text="Russian").grid(row=3, column=0, sticky="w", pady=(10, 2))
+
+        ru_container = ttk.Frame(right)
+        ru_container.grid(row=4, column=0, sticky="nsew")
+        ru_container.columnconfigure(1, weight=1)
+
+        self.ru_lines = LineNumbers(ru_container, None, width=35, highlightthickness=0, bg="#f0f0f0")
+        self.ru_lines.grid(row=0, column=0, sticky="ns")
+
         self.russian_text = tk.Text(
-            right,
+            ru_container,
             height=text_height,
             wrap="word",
             font=self.ui_fonts["text"],
             padx=10,
             pady=10,
+            undo=True,
+            autoseparators=True,
+            maxundo=50
         )
-        self.russian_text.grid(row=4, column=0, sticky="nsew")
+        self.russian_text.grid(row=0, column=1, sticky="nsew")
+        self.ru_lines.text_widget = self.russian_text
+
+        # --- BINDINGS ---
         self.russian_text.bind("<<Modified>>", self.on_russian_modified)
+        self.russian_text.bind("<Command-a>", self.select_all)
+        self.russian_text.bind("<Control-a>", self.select_all)
+        self.russian_text.bind("<Control-v>", self.handle_paste)
+
+        # Обновление номеров при прокрутке и вводе
+        self.russian_text.bind("<KeyRelease>", lambda e: self.ru_lines.redraw())
+        self.russian_text.bind("<MouseWheel>", lambda e: self.ru_lines.redraw())
+        self.english_text.bind("<MouseWheel>", lambda e: self.en_lines.redraw())
+
+        self.english_text.bind("<Control-a>", self.select_all)
+        self.english_text.bind("<Command-a>", self.select_all)
 
         buttons = ttk.Frame(right)
         buttons.grid(row=5, column=0, sticky="w", pady=(8, 0))
@@ -621,6 +722,32 @@ class TranslatorApp:
             font=self.ui_fonts["small"],
         )
         status.grid(row=2, column=0, sticky="ew")
+
+        self.english_text.configure(yscrollcommand=lambda *args: (self.en_lines.redraw(),))
+        self.russian_text.configure(yscrollcommand=lambda *args: (self.ru_lines.redraw(),))
+
+    def update_line_numbers(self, _event=None):
+        self.en_lines.redraw()
+        self.ru_lines.redraw()
+
+    def handle_paste(self, event):
+        self.russian_text.edit_separator()
+        try:
+            if self.russian_text.tag_ranges("sel"):
+                self.russian_text.delete("sel.first", "sel.last")
+
+            clipboard = self.root.clipboard_get()
+            self.russian_text.insert(tk.INSERT, clipboard)
+        except (tk.TclError, TypeError):
+            pass
+
+        self.russian_text.edit_separator()
+        return "break"
+
+    def select_all(self, event: tk.Event = None) -> str:
+        event.widget.tag_add("sel", "1.0", "end")
+        event.widget.mark_set("insert", "end")
+        return "break"
 
     def set_status(self, text: str) -> None:
         self.status_var.set(text)
@@ -696,13 +823,14 @@ class TranslatorApp:
         self.displayed_groups = self.filtered_groups()
         selected_item = None
         for index, group in enumerate(self.displayed_groups):
-            russian_preview = group.edited_russian.replace("\n", " ")
-            english_preview = group.english.replace("\n", " ")
+            russian_preview = group.edited_russian.replace("\n", " ↵ ")
+            english_preview = group.english.replace("\n", " ↵ ")
             item_id = self.tree.insert(
                 "",
                 "end",
                 iid=str(index),
                 values=(
+                    index + 1,
                     group.status(),
                     group.count,
                     self.truncate(english_preview, 90),
@@ -746,29 +874,107 @@ class TranslatorApp:
         for row in group.rows:
             self.ids_list.insert(tk.END, row.id)
 
+    def format_visual_newlines(self, widget: tk.Text):
+        widget.tag_config("visual_nl", foreground="gray")
+        widget.tag_remove("visual_nl", "1.0", tk.END)
+
+        start = "1.0"
+        while True:
+            start = widget.search("↵", start, stopindex=tk.END)
+            if not start:
+                break
+            end = f"{start}+1c"
+            widget.tag_add("visual_nl", start, end)
+            start = end
+
+    def insert_visual_nl(self, widget, index):
+        label = tk.Label(
+            widget,
+            text="↵",
+            fg="gray",
+            bg=widget.cget("background"),
+            font=self.ui_fonts["text"],
+            padx=0, pady=0,
+            cursor="xterm"
+        )
+        widget.window_create(index, window=label)
+
+    def refresh_visual_elements(self, widget):
+        widget.tag_config("nl_bg", background="#f0f0f0", underline=True)
+        widget.tag_remove("nl_bg", "1.0", tk.END)
+
+        idx = "1.0"
+        while True:
+            idx = widget.search("\n", idx, stopindex="end-1c")
+            if not idx: break
+            widget.tag_add("nl_bg", idx)
+            idx = widget.index(f"{idx}+1c")
+
     def set_english_text(self, text: str) -> None:
         self.english_text.configure(state="normal")
         self.english_text.delete("1.0", tk.END)
-        self.english_text.insert("1.0", text)
+        visual_text = text.replace("\n", "↵\n")
+        self.english_text.insert("1.0", visual_text)
+        self.apply_visual_tags(self.english_text)
         self.english_text.configure(state="disabled")
+        self.root.after(1, self.en_lines.redraw)
 
     def set_russian_text(self, text: str) -> None:
         self.russian_text.delete("1.0", tk.END)
-        self.russian_text.insert("1.0", text)
+        visual_text = text.replace("\n", "↵\n")
+        self.russian_text.insert("1.0", visual_text)
+        self.apply_visual_tags(self.russian_text)
         self.russian_text.edit_modified(False)
+        self.root.after(1, self.ru_lines.redraw)
+
+    def apply_visual_tags(self, widget):
+        widget.tag_config("visual_nl", foreground="gray", font=(self.special_font, 10))
+        widget.tag_remove("visual_nl", "1.0", tk.END)
+
+        idx = "1.0"
+        while True:
+            idx = widget.search("↵", idx, stopindex=tk.END)
+            if not idx:
+                break
+            end = f"{idx}+1c"
+            widget.tag_add("visual_nl", idx, end)
+            idx = end
 
     def on_russian_modified(self, _event: tk.Event | None = None) -> None:
         if not self.russian_text.edit_modified():
             return
-        if self.current_group is not None:
-            self.current_group.edited_russian = self.russian_text.get("1.0", tk.END).rstrip("\n")
-            self.current_group.dirty = True
+
         self.russian_text.edit_modified(False)
+        current_content = self.russian_text.get("1.0", "end-1c").replace("↵", "")
+        visual_content = current_content.replace("\n", "↵\n")
+
+        if self.russian_text.get("1.0", "end-1c") != visual_content:
+            cursor_pos = self.russian_text.index(tk.INSERT)
+            self.russian_text.delete("1.0", tk.END)
+            self.russian_text.insert("1.0", visual_content)
+            self.russian_text.mark_set(tk.INSERT, cursor_pos)
+
+            self.russian_text.update_idletasks()
+            self.russian_text.see(tk.INSERT)
+
+            dline = self.russian_text.dlineinfo(tk.INSERT)
+            if dline:
+                text_height = self.russian_text.winfo_height()
+                if dline[1] + dline[3] > text_height - 20:
+                    self.russian_text.yview_scroll(1, "units")
+            # ---------------------------
+
+        self.apply_visual_tags(self.russian_text)
+
+        if self.current_group is not None:
+            self.current_group.edited_russian = current_content
+            self.current_group.dirty = True
+        self.ru_lines.redraw()
 
     def commit_editor_to_group(self) -> None:
         if self.current_group is None:
             return
-        current_text = self.russian_text.get("1.0", tk.END).rstrip("\n")
+        current_text = self.russian_text.get("1.0", "end-1c").replace("↵", "")
         if self.current_group.edited_russian != current_text:
             self.current_group.edited_russian = current_text
             self.current_group.dirty = True
